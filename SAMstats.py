@@ -1,6 +1,6 @@
 ##################################
 #                                #
-# Last modified 10/27/2013       # 
+# Last modified 03/21/2015       # 
 #                                #
 # Georgi Marinov                 #
 #                                # 
@@ -12,19 +12,6 @@ import pysam
 import string
 from sets import Set
 import os
-
-# FLAG field meaning
-# 0x0001 1 the read is paired in sequencing, no matter whether it is mapped in a pair
-# 0x0002 2 the read is mapped in a proper pair (depends on the protocol, normally inferred during alignment) 1
-# 0x0004 4 the query sequence itself is unmapped
-# 0x0008 8 the mate is unmapped 1
-# 0x0010 16 strand of the query (0 for forward; 1 for reverse strand)
-# 0x0020 32 strand of the mate 1
-# 0x0040 64 the read is the first read in a pair 1,2
-# 0x0080 128 the read is the second read in a pair 1,2
-# 0x0100 256 the alignment is not primary (a read having split hits may have multiple primary alignment records)
-# 0x0200 512 the read fails platform/vendor quality checks
-# 0x0400 1024 the read is either a PCR duplicate or an optical duplicate
 
 def FLAG(FLAG):
 
@@ -141,7 +128,8 @@ def run():
                     ID = ID + '/1'
                 if alignedread.is_read2:
                     ID = ID + '/2'
-                if SeenDict.has_key(ID):
+                multiplicity = alignedread.opt('NH')
+                if multiplicity > 1:
                     if SeenTwiceDict.has_key(ID):
                         continue
                     SeenTwiceDict[ID]=''
@@ -149,18 +137,14 @@ def run():
                         Splice=False
                         for (m,bp) in alignedread.cigar:
                             if m == 3:
-                               UniqueSplices-=1
                                MultiSplices+=1
                                Splice=True
                                break
                         if not Splice:
-                            Unique-=1
                             Multi+=1
                     else:
-                        Unique-=1
                         Multi+=1
-                else:
-                    SeenDict[ID]=''
+                if multiplicity == 1:
                     if alignedread.cigar == None:
                         Unique+=1
                         continue
@@ -193,15 +177,14 @@ def run():
             if fields[2] == '*':
                 continue
             ID=fields[0]
-            if doPaired and fields[9] != '0':
-                FLAGfields = FLAG(int(fields[1]))
-                if 64 in FLAGfields:
-                    ID = ID + '/1'
-                elif 128 in FLAGfields:
-                    ID = ID + '/2'
-                else:
-                    print 'paired information incorrectly specified, exiting'
-                    sys.exit(1)
+            FLAGfields = FLAG(int(fields[1]))
+            if 64 in FLAGfields:
+                ID = ID + '/1'
+            elif 128 in FLAGfields:
+                ID = ID + '/2'
+            else:
+                 print 'paired information incorrectly specified, exiting'
+                 sys.exit(1)
             if SeenDict.has_key(ID):
                 if SeenTwiceDict.has_key(ID):
                     continue
@@ -257,7 +240,7 @@ def run():
                 multiplicity = alignedread.opt('NH')
                 if multiplicity > 1:
                     continue
-                start=alignedread.pos
+                start = alignedread.pos
                 if start != currentPos:
                     TotalUniqueReads += len(CurrentPosDictPlus)
                     DistinctUniqueReads += len(Set(CurrentPosDictPlus))
@@ -268,8 +251,12 @@ def run():
                     currentPos=start
                 if strand == '+':
                     CurrentPosDictPlus.append(str(alignedread.cigar))
+                    if doPaired:
+                         CurrentPosDictPlus.append((str(alignedread.cigar),alignedread.mpos))
                 if strand == '-':
                     CurrentPosDictMinus.append(str(alignedread.cigar))
+                    if doPaired:
+                         CurrentPosDictMinus.append((str(alignedread.cigar),alignedread.mpos))
         Complexity = DistinctUniqueReads/float(TotalUniqueReads) 
 
     SeenDict=''

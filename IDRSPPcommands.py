@@ -1,6 +1,6 @@
 ##################################
 #                                #
-# Last modified 03/16/2015       # 
+# Last modified 11/11/2015       # 
 #                                #
 # Georgi Marinov                 #
 #                                # 
@@ -15,7 +15,7 @@ def run():
     if len(sys.argv) < 5:
         print 'usage: python %s config SPP_location samtools BAMPseudoReps.py N_cpus' % sys.argv[0]
         print '\tconfig format:'
-        print '\tlabel\tChIP-Rep1.bam\tInput-Rep1.bam'
+        print '\tlabel\tChIP-Rep1.bam\tInput-Rep1.bam\tChIP-Rep2.bam\tInput-Rep2.bam'
         print '\tThe script will print to stdout'
         sys.exit(1)
 
@@ -127,8 +127,8 @@ def run():
         CommandDict['PeakCallIndividualPseudoRep'].append('Rscript ' + SPP + ' -c=' + Rep2ChIPIndividualPseudoRep1 + ' -i=' + Rep2InputIndividualPseudoRep1 + ' -p=' + P + ' -npeak=300000 -savr -savp -rf -odir=' + Rep2IndividualPseudoRep1Dir)
         CommandDict['PeakCallIndividualPseudoRep'].append('Rscript ' + SPP + ' -c=' + Rep2ChIPIndividualPseudoRep2 + ' -i=' + Rep2InputIndividualPseudoRep2 + ' -p=' + P + ' -npeak=300000 -savr -savp -rf -odir=' + Rep2IndividualPseudoRep2Dir)
 
-        CommandDict['IDRRep12'].append('Rscript batch-consistency-analysis.r' + ' ' + Rep1Dir + '/' + ChIPRep1[0:-4] + '_VS_' + InputRep1[0:-4] + '.regionPeak' + 
-                                                                                ' ' + Rep2Dir + '/' + ChIPRep2[0:-4] + '_VS_' + InputRep2[0:-4] + '.regionPeak' + 
+        CommandDict['IDRRep12'].append('Rscript batch-consistency-analysis.r' + ' ' + Rep1Dir + '/' + ChIPRep1.split('/')[-1][0:-4] + '_VS_' + InputRep1.split('/')[-1][0:-4] + '.regionPeak' + 
+                                                                                ' ' + Rep2Dir + '/' + ChIPRep2.split('/')[-1][0:-4] + '_VS_' + InputRep2.split('/')[-1][0:-4] + '.regionPeak' + 
                                                                             ' -1 IDR-SPP-'  + label + ' 0 F signal.value')
 
         CommandDict['IDRPooledPseudoRep'].append('Rscript batch-consistency-analysis.r' + ' ' + PooledPseudoRep1Dir + '/' + PooledChIPBAMPseudoRep1[0:-4] + '_VS_' + PooledInputBAMPseudoRep1[0:-4] + '.regionPeak' + 
@@ -218,4 +218,3 @@ def run():
     print 'gzip SPP-300K*/*eak'
 
 run()
-

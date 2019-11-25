@@ -1,6 +1,6 @@
 ##################################
 #                                #
-# Last modified 06/09/2014       # 
+# Last modified 2019/03/08       # 
 #                                #
 # Georgi Marinov                 #
 #                                # 
@@ -40,14 +40,17 @@ def FLAG(FLAG):
 def run():
 
     if len(sys.argv) < 5:
-        print 'usage: python %s bedfilename chrField BAMfilename chrom.sizes outputfilename [-nomulti] [-RPM] [-stranded +|-] [-readLength min max] [-printSum] [-uniqueBAM] [-mappabilityNormalize mappability.wig readLength] [-noNH samtools]' % sys.argv[0]
+        print 'usage: python %s bedfilename chrField BAMfilename chrom.sizes outputfilename [-endonly] [-end2only] [-end1only] [-nomulti] [-RPM] [-totalReadNumber number] [-stranded +|-] [-readLength min max] [-printSum] [-uniqueBAM] [-mappabilityNormalize mappability.wig readLength] [-noNH samtools] [-singleFieldRegion] [-excludeReadsMappingToOtherChromosomes]' % sys.argv[0]
         print 'Note: the script will divide multireads by their multiplicity'
-        print '\t-printSum option only working together with the RPM option'
-        print '\tuse the uniqueBAM option if the BAM file contains only unique alignments; this will save a lot of memory'
-        print '\tuse the -mappabilityNormalize option to get mappability normalized RPKMs (it will not do anything to the RPMs; not that a mappability track that goes from 0 to the read length is assumed'
-        print '\tuse the -noNH option and supply a path to samtools in order to have the file converted to one that has NH tags'
+        print '\tthe [-printSum] option only working together with the RPM option'
+        print '\tuse the [-uniqueBAM] option if the BAM file contains only unique alignments; this will save a lot of memory'
+        print '\tuse the [-mappabilityNormalize] option to get mappability normalized RPKMs (it will not do anything to the RPMs; not that a mappability track that goes from 0 to the read length is assumed'
+        print '\tuse the [-noNH] option and supply a path to samtools in order to have the file converted to one that has NH tags'
         print '\tthe stranded option will normalized against all reads, not just reads on the indicated strand'
+        print '\tthe [-endonly] option will only count reads whose leftmost coordinates are in a given region'
+        print '\tuse the [-excludeReadsMappingToOtherChromosomes] option if you want to exclude multimappers that map to chromosomes other than what is included in the chrom.sizes file; note that it is incompatible with the [-noNHinfo] option'
         sys.exit(1)
+
     
     bed = sys.argv[1]
     fieldID = int(sys.argv[2])
@@ -55,19 +58,51 @@ def run():
     chromSize = sys.argv[4]
     outfilename = sys.argv[5]
 
-    chromInfoList=[]
-    linelist=open(chromSize)
+    chromInfoList = []
+    chromInfoDict = {}
+    linelist = open(chromSize)
     for line in linelist:
-        fields=line.strip().split('\t')
-        chr=fields[0]
-        start=0
-        end=int(fields[1])
+        fields = line.strip().split('\t')
+        chr = fields[0]
+        start = 0
+        end = int(fields[1])
         chromInfoList.append((chr,start,end))
+        chromInfoDict[chr] = 1
 
+    doERMTOC = False
+    if '-excludeReadsMappingToOtherChromosomes' in sys.argv:
+        print 'will exclude multimapping reads mapping to chromosomes other than those included in', chromSize
+        doERMTOC = True
+        ERMTOCDict = {}
+
+    doEO = False
+    if '-endonly' in sys.argv:
+        doEO = True
+        print '-endonly option enabled'
+
+    doEnd1Only = False
+    doEnd2Only = False
+    if '-end1only' in sys.argv and '-end2only' in sys.argv:
+        print 'both -end1only and -end2only option specified, a logical impossiblity, exiting'
+        sys.exit(1)
+
+    if '-end1only' in sys.argv:
+        doEnd1Only = True
+        print 'will only consider the first end of read pairs'
+
+    if '-end2only' in sys.argv:
+        doEnd2Only = True 
+        print 'will only consider the second end of read pairs'
+    
     noMulti=False
     if '-nomulti' in sys.argv:
         noMulti=True
         print 'will discard multi-read alignments'
+
+    doDirectTRN = False
+    if '-totalReadNumber' in sys.argv:
+        doDirectTRN = True
+        DTRN = int(sys.argv[sys.argv.index('-totalReadNumber')+1])
 
     doReadLength=False
     if '-readLength' in sys.argv:
@@ -92,6 +127,10 @@ def run():
         if '-printSum' in sys.argv:
             doPrintSum=True
             RPMSum=0
+
+    doSFR = False
+    if '-singleFieldRegion' in sys.argv:
+        doSFR = True
 
     doUniqueBAM = False
     if '-uniqueBAM' in sys.argv:
@@ -204,15 +243,27 @@ def run():
     Multi=0
     MultiSplices=0
 
-    if doUniqueBAM and not doReadLength:
+    if doUniqueBAM and not doReadLength and not doEnd2Only and not doEnd1Only:
         TotalReads = 0
-        for chrStats in pysam.idxstats(SAM):
-            fields = chrStats.strip().split('\t')
-            chr = fields[0]
-            reads = int(fields[2])
-            if chr != '*':
-                TotalReads += reads
+        try:
+            for chrStats in pysam.idxstats(SAM):
+                fields = chrStats.strip().split('\t')
+                chr = fields[0]
+                reads = int(fields[2])
+                if chr != '*':
+                    TotalReads += reads
+        except:
+            for chrStats in pysam.idxstats(SAM).strip().split('\n'):
+#                print chrStats
+                fields = chrStats.strip().split('\t')
+                print fields
+                chr = fields[0]
+                reads = int(fields[2])
+                if chr != '*':
+                    TotalReads += reads
         UniqueReads = TotalReads
+    elif doDirectTRN:
+        TotalReads = DTRN
     else:
         MultiplicityDict={}
         UniqueReads = 0
@@ -225,6 +276,15 @@ def run():
                     if i % 5000000 == 0:
                         print str(i/1000000) + 'M alignments processed', chr,start,end
                     fields=str(alignedread).split('\t')
+                    ID=fields[0]
+                    if alignedread.is_read1:
+                        if doEnd2Only:
+                             continue
+                        ID = ID + '/1'
+                    if alignedread.is_read2:
+                        if doEnd1Only:
+                             continue
+                        ID = ID + '/2'
                     if doReadLength:
                         if len(alignedread.seq) > maxRL or len(alignedread.seq) < minRL:
                             ORLL += 1
@@ -235,11 +295,6 @@ def run():
                     if alignedread.opt('NH') == 1:
                         UniqueReads += 1
                         continue
-                    ID=fields[0]
-                    if alignedread.is_read1:
-                        ID = ID + '/1'
-                    if alignedread.is_read2:
-                        ID = ID + '/2'
                     if MultiplicityDict.has_key(ID):
                         MultiplicityDict[ID]+=1
                     else:
@@ -253,15 +308,74 @@ def run():
         else:
             TotalReads = UniqueReads + len(MultiplicityDict.keys())
 
-    print TotalReads, UniqueReads
-
     normalizeBy = TotalReads/1000000.
+
+    print 'TotalReads', TotalReads
+    print 'RPM normalization Factor =', normalizeBy
+
+    if doERMTOC:
+        i = 0
+        samfile = pysam.Samfile(SAM, "rb" )
+        for read in samfile.fetch(until_eof=True):
+            i+=1
+            if i % 5000000 == 0:
+                print 'examining read cross-chromosome alignments, first pass', str(i/1000000) + 'M alignments processed processed'
+            fields = str(read).split('\t')
+            ID = read.qname
+            if read.is_unmapped:
+                continue
+            if read.opt('NH') == 1:
+                continue
+            if ERMTOCDict.has_key(ID):
+                pass
+            else:
+                ERMTOCDict[ID] = {}
+            chr = samfile.getrname(read.tid)
+            ERMTOCDict[ID][chr] = 1.0/read.opt('NH')
+        i = 0
+#        print 'found', len(ERMTOCDict.keys()), 'multimappers'
+        Excluded = 0
+        for ID in ERMTOCDict.keys():
+            i+=1
+            if i % 5000000 == 0:
+                 print 'examining read cross-chromosome alignments, second pass', str(i/1000000) + 'M alignments processed processed'
+            ToBeExcluded = False
+            AlignsToWantedChromosomes = False
+            for chr in ERMTOCDict[ID].keys():
+                if chr not in chromInfoDict.keys():
+                    ToBeExcluded = True
+                if chr in chromInfoDict.keys():
+                    AlignsToWantedChromosomes = True
+            if ToBeExcluded:
+                if AlignsToWantedChromosomes:
+                    TotalReads = TotalReads - ERMTOCDict[ID][chr]
+                    Excluded += 1
+                del ERMTOCDict[ID]
+        print 'excuded', Excluded, 'multimappers'
+        print 'retained', len(ERMTOCDict.keys()), 'multimappers'
+
+        normalizeBy = TotalReads/1000000.
+
+        print 'TotalReads after excluding multimappers mapping to chromosomes outside provided list', TotalReads
+        print 'RPM normalization Factor =', normalizeBy
 
     outfile = open(outfilename, 'w')
 
-    lineslist = open(bed)
     i=0
-    for line in lineslist:
+    if bed.endswith('.bz2'):
+        cmd = 'bzip2 -cd ' + bed
+    elif bed.endswith('.gz'):
+        cmd = 'gunzip -c ' + bed
+    else:
+        cmd = 'cat ' + bed
+    p = os.popen(cmd, "r")
+    line = 'line'
+    while line != '':
+        line = p.readline()
+        if line == '':
+            break
+#    lineslist = open(bed)
+#    for line in lineslist:
         i+=1
         if i % 10000 == 0:
             print i, 'regions processed'
@@ -280,6 +394,7 @@ def run():
             print 'problem with region, skipping:', chr, left, right
             continue
         reads=0
+#        reads2 =  0
         try:
             for alignedread in samfile.fetch(chr, left, right):
                 fields2=str(alignedread).split('\t')
@@ -295,22 +410,41 @@ def run():
                     if s != thestrand:
                         continue
                 if alignedread.is_read1:
+                    if doEnd2Only:
+                        continue
                     ID = ID + '/1'
                 if alignedread.is_read2:
+                    if doEnd1Only:
+                        continue
                     ID = ID + '/2'
                 if doUniqueBAM:
-                    reads += 1
+                    if doEO:
+                        if alignedread.pos >= left and alignedread.pos < right:
+                            reads += 1
+                        else:
+                            reads += 0
+                    else:
+                        reads += 1
                 else:
                     if noMulti and alignedread.opt('NH') > 1:
                         continue
-                    reads += 1./alignedread.opt('NH')
-#                    print 'NH, weight:', alignedread.opt('NH'), 1./alignedread.opt('NH')
+                    if doERMTOC and alignedread.opt('NH') > 1:
+                        if ERMTOCDict.has_key(ID):
+                            pass
+                        else:
+                            continue
+                    if doEO:
+                        if alignedread.pos >= left and alignedread.pos < right:
+                            reads += 1./alignedread.opt('NH')
+                        else:
+                            reads += 0
+                    else:
+                        reads += 1./alignedread.opt('NH')
         except:
             print 'problem with region:', chr, left, right, 'assigning 0 value'
             reads=0
         if doRPM:
-            score = reads / normalizeBy
-#            print chr, right - left, normalizeBy
+            score = reads/normalizeBy
         else:
             try:
                 score = reads / (((right-left)/1000.)*normalizeBy)
@@ -318,8 +452,11 @@ def run():
                 print 'region of size 0, skipping:', line.strip()
                 continue
         if doPrintSum:
-            RPMSum+=score
-        outline = line.strip() +'\t' + str(score)
+            RPMSum += score
+        if doSFR:
+            outline = chr + ':' + str(left) + '-' + str(right) +'\t' + str(score)
+        else:
+            outline = line.strip() +'\t' + str(score)
         if doMappabilityCorrection:
             outline = outline + '\t' + str(MappabilityRegionDict[chr][(left,right)])
             if MappabilityRegionDict[chr][(left,right)] == 0:

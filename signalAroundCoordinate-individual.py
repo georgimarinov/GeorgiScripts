@@ -1,6 +1,6 @@
 ##################################
 #                                #
-# Last modified 2019/03/22       # 
+# Last modified 2019/11/25       # 
 #                                #
 # Georgi Marinov                 #
 #                                # 
@@ -17,13 +17,15 @@ def run():
 
     if len(sys.argv) < 6:
         print 'usage: python %s inputfilename chrFieldID posField [strandField | -noStrand] upstream downstream bigWig outputfilename [-strand +|-] [-average bp] [-window bp] [-sortby fieldID] [-fullRegionInfo] [-narrowPeak]' % sys.argv[0]
-        print '\tInput format: <fields .. tabs> chr <tab> position' 
-        print '\tthe wig file can be in .bz2 or .gz format' 
+        print '\tUse "midPoint" as the posField parameter if you want to use the middle of region'
         sys.exit(1)
     
     regionfilename = sys.argv[1]
     chrFieldID = int(sys.argv[2])
-    posFieldID = int(sys.argv[3])
+    if sys.argv[3] == 'midPoint':
+        posFieldID = sys.argv[3]
+    else:
+        posFieldID = int(sys.argv[3])
     noStrand=False
     if sys.argv[4]=='-noStrand':
         noStrand=True
@@ -94,7 +96,9 @@ def run():
         chr = fields[chrFieldID]
         if doNP:
             pos = int(fields[1]) + int(fields[9])
-        else:
+        elif posFieldID == 'midPoint':
+            pos = int((int(fields[chrFieldID + 1]) + int(fields[chrFieldID + 2]))/2.0)
+        else:  
             pos = int(fields[posFieldID])
         if noStrand:
             strand = '+'

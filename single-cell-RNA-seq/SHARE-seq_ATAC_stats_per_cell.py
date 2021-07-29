@@ -1,6 +1,6 @@
 ##################################
 #                                #
-# Last modified 2021/04/13       # 
+# Last modified 2021/07/29       # 
 #                                #
 # Georgi Marinov                 #
 #                                # 
@@ -139,7 +139,8 @@ def run():
                 BCFragmentDict[BC]['fragments'] = 0
                 BCFragmentDict[BC]['TSS'] = 0
                 BCFragmentDict[BC]['flanks'] = 0
-            BCFragmentDict[BC]['fragments'] += 1
+            if alignedread.is_read1:
+                BCFragmentDict[BC]['fragments'] += 1
             if TSSDict.has_key(chr):
                 if TSSDict[chr].has_key(pos):
                     BCFragmentDict[BC]['TSS'] += 1
